@@ -1,4 +1,4 @@
-Dashgo D1
+Dashgo D1 14.04
 
 Version:v2.0
 
