@@ -1,0 +1,6 @@
+<launch>
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find dashgo_rviz)/rviz/view_navigation.rviz"/>
+  <node pkg="costmap_2d" type="costmap_2d_markers" name="voxel_visualizer">
+    <remap from="voxel_grid" to="/move_base/local_costmap/obstacle_layer/voxel_grid"/>
+  </node>
+</launch>

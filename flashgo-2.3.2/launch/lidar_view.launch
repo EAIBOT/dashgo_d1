@@ -1,0 +1,4 @@
+<launch>
+  <include file="$(find flashgo)/launch/lidar.launch" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find flashgo)/launch/lidar.rviz" />
+</launch>

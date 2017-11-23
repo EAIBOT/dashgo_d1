@@ -1,0 +1,7 @@
+<launch>
+  <include file="$(find dashgo_driver)/launch/demo.launch"/>
+  <include file="$(find flashgo)/launch/flash_lidar.launch"/>
+  <include file="$(find dashgo_description)/launch/dashgo_description.launch"/>
+  <include file="$(find dashgo_nav)/launch/include/odom/gmapping.launch"/>
+  <include file="$(find dashgo_nav)/launch/include/odom/teb_move_base.launch"/>
+</launch>
