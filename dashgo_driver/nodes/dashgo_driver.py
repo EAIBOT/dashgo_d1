@@ -13,18 +13,19 @@ from serial.serialutil import SerialException
 from serial import Serial
 
 import roslib
+import math
 
 from geometry_msgs.msg import Quaternion, Twist, Pose
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Int16
+from std_msgs.msg import Int16,Int32
 from tf.broadcaster import TransformBroadcaster
 
-#from dashgo_driver.srv import *
-#from SrvInt32.srv import *
 from std_srvs.srv import Trigger, TriggerResponse
 
 from sensor_msgs.msg import Range
-from std_msgs.msg import Int16
+import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2, PointField 
+
  
 ODOM_POSE_COVARIANCE = [1e-3, 0, 0, 0, 0, 0, 
                         0, 1e-3, 0, 0, 0, 0,
@@ -321,8 +322,8 @@ class Arduino:
 
     def ping(self):
         values = self.execute_array('p')
-        if len(values) != 5:
-            print "ping count was not 5"
+	if len(values) != 4:
+            print "ping count was not 4"
             raise SerialException
             return None
         else:
@@ -347,6 +348,15 @@ class Arduino:
         values = self.execute_array('f')
         if len(values) != 2:
             print "get_pidout count was not 2"
+            raise SerialException
+            return None
+        else:
+            return values
+
+    def get_arduino_version(self):
+        values=self.execute_array('V')
+        if len(values) !=2:
+            print "get arduino version error"
             raise SerialException
             return None
         else:
@@ -414,7 +424,6 @@ class BaseController:
         self.last_cmd_vel = now
 
         # Subscriptions
-        #rospy.Subscriber("cmd_vel", Twist, self.cmdVelCallback)
         rospy.Subscriber("smoother_cmd_vel", Twist, self.cmdVelCallback)
         
         # Clear any old odometry info
@@ -437,46 +446,64 @@ class BaseController:
         self.sonar1_pub = rospy.Publisher('sonar1', Range, queue_size=5)
         self.sonar2_pub = rospy.Publisher('sonar2', Range, queue_size=5)
         self.sonar3_pub = rospy.Publisher('sonar3', Range, queue_size=5)
-        self.sonar4_pub = rospy.Publisher('sonar4', Range, queue_size=5)
+
+        self.sonar_r0 =0.0
+        self.sonar_r1 =0.0
+        self.sonar_r2 =0.0
+        self.sonar_r3 =0.0
         
-        self.safe_ranger_0 = 0.3
-        self.safe_ranger_1 = 0.6
-        self.safe_ranger_2 = 1.0
-        self.front_ranger_l = 10.0
-        self.front_ranger_r = 10.0
+        self.safe_range_0 = 10
+        self.safe_range_1 = 7
+
+        self.sonar_pub_cloud = rospy.Publisher("/sonar_cloudpoint", PointCloud2, queue_size=5)
+        
+        self.sonar_height = rospy.get_param("~sonar_height", 0.115)
+        self.sonar_maxval = 3.5
+        
+        self.point_offset = rospy.get_param("~point_offset", 0.08)
+        self.sonar0_offset_yaw = rospy.get_param("~sonar0_offset_yaw", 0.524)
+        self.sonar0_offset_x = rospy.get_param("~sonar0_offset_x", 0.18)
+        self.sonar0_offset_y = rospy.get_param("~sonar0_offset_y", 0.10)
+
+        self.sonar1_offset_yaw = rospy.get_param("~sonar1_offset_yaw", 0.0)
+        self.sonar1_offset_x = rospy.get_param("~sonar1_offset_x", 0.20)
+        self.sonar1_offset_y = rospy.get_param("~sonar1_offset_y",0.0)
+
+        self.sonar2_offset_yaw = rospy.get_param("~sonar2_offset_yaw", -0.524)
+        self.sonar2_offset_x = rospy.get_param("~sonar2_offset_x", 0.18)
+        self.sonar2_offset_y = rospy.get_param("~sonar2_offset_y", -0.10)
+
+        self.sonar3_offset_yaw = rospy.get_param("~sonar3_offset_yaw", 3.14)
+        self.sonar3_offset_x = rospy.get_param("~sonar3_offset_x", -0.20)
+        self.sonar3_offset_y = rospy.get_param("~sonar3_offset_y", 0.0)
+
+
+        self.sonar_cloud = [[100.0,0.105,0.1],[100.0,-0.105,0.1],[0.2,100.0,0.1],[0.2,-100.0,0.1]]
+
+        self.sonar_cloud[0][0] = self.sonar0_offset_x + self.sonar_maxval * math.cos(self.sonar0_offset_yaw)
+        self.sonar_cloud[0][1] = self.sonar0_offset_y + self.sonar_maxval * math.sin(self.sonar0_offset_yaw)
+        self.sonar_cloud[0][2] = self.sonar_height
+
+        self.sonar_cloud[1][0] = self.sonar1_offset_x + self.sonar_maxval * math.cos(self.sonar1_offset_yaw)
+        self.sonar_cloud[1][1] = self.sonar1_offset_y + self.sonar_maxval * math.sin(self.sonar1_offset_yaw)
+        self.sonar_cloud[1][2] = self.sonar_height
+
+        self.sonar_cloud[2][0] = self.sonar2_offset_x + self.sonar_maxval * math.cos(self.sonar2_offset_yaw)
+        self.sonar_cloud[2][1] = self.sonar2_offset_y + self.sonar_maxval * math.sin(self.sonar2_offset_yaw)
+        self.sonar_cloud[2][2] = self.sonar_height
+
+        self.sonar_cloud[3][0] = self.sonar3_offset_x + self.sonar_maxval * math.cos(self.sonar3_offset_yaw)
+        self.sonar_cloud[3][1] = self.sonar3_offset_y + self.sonar_maxval * math.sin(self.sonar3_offset_yaw)
+        self.sonar_cloud[3][2] = self.sonar_height        
     
-        self.voltage_bool = False
         self.voltage_val = 0
-        self.voltage_status_service = rospy.Service('voltage_status', Trigger, self.handle_voltage_status) 
-	self.voltage_pub = rospy.Publisher('voltage_value', Int16, queue_size=30)
+        self.voltage_pub = rospy.Publisher('voltage_value', Int32, queue_size=30)
    
-        self.emergencybt_bool = False
-        self.emergencybt_val = 0
-        self.emergencybt_status_service = rospy.Service('emergencybt_status', Trigger, self.handle_emergencybt_status) 
-        self.emergencybt_pub = rospy.Publisher('emergencybt_status', Int16, queue_size=30)
+        self.emergencybt_val = 0 
+        self.emergencybt_pub = rospy.Publisher('emergencybt_status', Int32, queue_size=30)
 
         rospy.Subscriber("is_passed", Int16, self.isPassedCallback)
         self.isPassed = True
-      
-    def handle_voltage_status(self, req):
-        try:
-             self.voltage_bool = True
-             self.voltage_val  = self.arduino.get_voltage()
-        except:
-             self.voltage_bool = False
-             self.voltage_val  = 0
-             rospy.logerr("get_voltage_status exception ")
-        return TriggerResponse(self.voltage_bool, str(self.voltage_val*10))
-
-    def handle_emergencybt_status(self, req):
-        try:
-             self.emergencybt_bool = True
-             self.emergencybt_val = self.arduino.get_emergency_button()
-        except:
-             self.emergencybt_bool = False
-             self.emergencybt_val  = 0
-             rospy.logerr("get_emergencybt_status exception ")
-        return TriggerResponse(self.emergencybt_bool, str(self.emergencybt_val))
  
     
     def setup_pid(self, pid_params):
@@ -506,84 +533,102 @@ class BaseController:
         now = rospy.Time.now()
         if now > self.t_next:
             if (self.useSonar == True) :
+		pcloud = PointCloud2()
                 try:
-                    r0, r1, r2, r3, r4= self.arduino.ping()
-                    rospy.loginfo("r0: " + str(r0)+"r1: " + str(r1) + "r2: " + str(r2) + "r3: " + str(r3)+ "r4: " + str(r4))
-                    #rospy.loginfo("r0: " + str(r0) + "r3: " + str(r3))
-                    sonar0_range = Range()
+                    self.sonar_r0, self.sonar_r1, self.sonar_r2, self.sonar_r3= self.arduino.ping()
+                    #rospy.loginfo(" sonar0: "+str(self.sonar_r0)+" sonar1: "+str(self.sonar_r1)
+		    #             +" sonar2: "+str(self.sonar_r2)+" sonar3: "+str(self.sonar_r3))
+		    sonar0_range = Range()
                     sonar0_range.header.stamp = now
                     sonar0_range.header.frame_id = "/sonar0"
                     sonar0_range.radiation_type = Range.ULTRASOUND
-                    sonar0_range.min_range = 0.05
-                    sonar0_range.max_range = 4.0
-                    sonar0_range.range = r0/100.0
+                    sonar0_range.field_of_view = 0.3
+                    sonar0_range.min_range = 0.03
+                    sonar0_range.max_range = 0.8
+                    sonar0_range.range = self.sonar_r0/100.0
+                    if sonar0_range.range>=sonar0_range.max_range or sonar0_range.range == 0.0:
+                        sonar0_range.range = sonar0_range.max_range
                     self.sonar0_pub.publish(sonar0_range)
+                    if sonar0_range.range>=0.5 or sonar0_range.range == 0.0:
+                        self.sonar_cloud[0][0] = self.sonar0_offset_x + self.sonar_maxval * math.cos(self.sonar0_offset_yaw)
+                        self.sonar_cloud[0][1] = self.sonar0_offset_y + self.sonar_maxval * math.sin(self.sonar0_offset_yaw)
+                    else: 
+                        self.sonar_cloud[0][0] = self.sonar0_offset_x + sonar0_range.range * math.cos(self.sonar0_offset_yaw)
+                        self.sonar_cloud[0][1] = self.sonar0_offset_y + sonar0_range.range * math.sin(self.sonar0_offset_yaw)
+
                     sonar1_range = Range()
                     sonar1_range.header.stamp = now
                     sonar1_range.header.frame_id = "/sonar1"
                     sonar1_range.radiation_type = Range.ULTRASOUND
-                    sonar1_range.min_range = 0.05
-                    sonar1_range.max_range = 4.0
-                    sonar1_range.range = r1/100.0
+                    sonar1_range.field_of_view = 0.3
+                    sonar1_range.min_range = 0.03
+                    sonar1_range.max_range = 0.8
+                    sonar1_range.range = self.sonar_r1/100.0
+                    if sonar1_range.range>=sonar0_range.max_range or sonar1_range.range == 0.0:
+                        sonar1_range.range = sonar1_range.max_range
                     self.sonar1_pub.publish(sonar1_range)
+                    if sonar1_range.range>=0.5 or sonar1_range.range == 0.0:
+                        self.sonar_cloud[1][0] = self.sonar1_offset_x + self.sonar_maxval * math.cos(self.sonar1_offset_yaw)
+                        self.sonar_cloud[1][1] = self.sonar1_offset_y + self.sonar_maxval * math.sin(self.sonar1_offset_yaw)
+                    else: 
+                        self.sonar_cloud[1][0] = self.sonar1_offset_x + sonar1_range.range * math.cos(self.sonar1_offset_yaw)
+                        self.sonar_cloud[1][1] = self.sonar1_offset_y + sonar1_range.range * math.sin(self.sonar1_offset_yaw)
+
                     sonar2_range = Range()
                     sonar2_range.header.stamp = now
                     sonar2_range.header.frame_id = "/sonar2"
                     sonar2_range.radiation_type = Range.ULTRASOUND
-                    sonar2_range.min_range = 0.05
-                    sonar2_range.max_range = 4.0
-                    sonar2_range.range = r2/100.0
+                    sonar2_range.field_of_view = 0.3
+                    sonar2_range.min_range = 0.03
+                    sonar2_range.max_range = 0.8
+                    sonar2_range.range = self.sonar_r2/100.0
+                    if sonar2_range.range>=sonar2_range.max_range or sonar2_range.range == 0.0:
+                        sonar2_range.range = sonar2_range.max_range
                     self.sonar2_pub.publish(sonar2_range)
+                    if sonar2_range.range>=0.5 or sonar2_range.range == 0.0:
+                        self.sonar_cloud[2][0] = self.sonar2_offset_x + self.sonar_maxval * math.cos(self.sonar2_offset_yaw)
+                        self.sonar_cloud[2][1] = self.sonar2_offset_y + self.sonar_maxval * math.sin(self.sonar2_offset_yaw)
+                    else:
+                        self.sonar_cloud[2][0] = self.sonar2_offset_x + sonar2_range.range * math.cos(self.sonar2_offset_yaw)
+                        self.sonar_cloud[2][1] = self.sonar2_offset_y + sonar2_range.range * math.sin(self.sonar2_offset_yaw)
+
                     sonar3_range = Range()
                     sonar3_range.header.stamp = now
                     sonar3_range.header.frame_id = "/sonar3"
                     sonar3_range.radiation_type = Range.ULTRASOUND
-                    sonar3_range.min_range = 0.05
-                    sonar3_range.max_range = 4.0
-                    sonar3_range.range = r3/100.0
+                    sonar3_range.field_of_view = 0.3
+                    sonar3_range.min_range = 0.03
+                    sonar3_range.max_range = 0.8
+                    sonar3_range.range = self.sonar_r3/100.0
+                    if sonar3_range.range>=sonar3_range.max_range or sonar3_range.range == 0.0:
+                        sonar3_range.range = sonar3_range.max_range
                     self.sonar3_pub.publish(sonar3_range)
-                    sonar4_range = Range()
-                    sonar4_range.header.stamp = now
-                    sonar4_range.header.frame_id = "/sonar4"
-                    sonar4_range.radiation_type = Range.ULTRASOUND
-                    sonar4_range.min_range = 0.05
-                    sonar4_range.max_range = 4.0
-                    sonar4_range.range = r4/100.0
-                    self.sonar4_pub.publish(sonar4_range)
-                    if(sonar0_range.range>=0.05) and (sonar0_range.range<=4.0):
-                        self.front_ranger_l = sonar0_range.range
+                    if sonar3_range.range>=0.5 or sonar3_range.range == 0.0:
+                        self.sonar_cloud[3][0] = self.sonar3_offset_x + self.sonar_maxval * math.cos(self.sonar3_offset_yaw)
+                        self.sonar_cloud[3][1] = self.sonar3_offset_y + self.sonar_maxval * math.sin(self.sonar3_offset_yaw)
                     else:
-                        self.front_ranger_l = 10.0
-                    if(sonar1_range.range>=0.05) and (sonar1_range.range<=4.0):
-                        self.front_ranger_r = sonar1_range.range
-                    else:
-                        self.front_ranger_r = 10.0
+                        self.sonar_cloud[3][0] = self.sonar3_offset_x + sonar3_range.range * math.cos(self.sonar3_offset_yaw)
+                        self.sonar_cloud[3][1] = self.sonar3_offset_y + sonar3_range.range * math.sin(self.sonar3_offset_yaw)
                 except:
-                    self.front_ranger_l = 10.0
-                    self.front_ranger_r = 10.0
                     self.bad_encoder_count += 1
                     rospy.logerr("ping exception count: " + str(self.bad_encoder_count))
                     return
 
+                pcloud.header.frame_id="/base_footprint"
+                pcloud = pc2.create_cloud_xyz32(pcloud.header, self.sonar_cloud)
+                self.sonar_pub_cloud.publish(pcloud)
+
 	    try:
 	        self.voltage_val  = self.arduino.get_voltage()*10
-		#print "voltage_val=",self.voltage_val
-		self.voltage_pub.publish(self.voltage_val)
-		#print "publish voltage_val is",self.voltage_val
+                self.voltage_pub.publish(self.voltage_val)
 	    except:
-		self.voltage_pub.publish(-1)
-		#rospy.logerr("get voltage value error")
-		#return
+                self.voltage_pub.publish(-1)
 
 	    try:
 	        self.emergencybt_val  = self.arduino.get_emergency_button()
-	        #print "emergencybt_val=",self.emergencybt_val
 	        self.emergencybt_pub.publish(self.emergencybt_val)
-	        #print "publish emergencybt_val is",self.emergencybt_val
 	    except:
-		self.emergencybt_pub.publish(-1)
-	        #rospy.logerr("get emergencybt status error")
-	        #return
+                self.emergencybt_pub.publish(-1)
  
             try:
                 left_enc, right_enc = self.arduino.get_encoder_counts()
@@ -616,8 +661,6 @@ class BaseController:
                     self.r_wheel_mult = self.r_wheel_mult - 1
                 else:
                      self.r_wheel_mult = 0
-                #dright = (right_enc - self.enc_right) / self.ticks_per_meter
-                #dleft = (left_enc - self.enc_left) / self.ticks_per_meter
                 dleft = 1.0 * (left_enc + self.l_wheel_mult * (self.encoder_max - self.encoder_min)-self.enc_left) / self.ticks_per_meter 
                 dright = 1.0 * (right_enc + self.r_wheel_mult * (self.encoder_max - self.encoder_min)-self.enc_right) / self.ticks_per_meter 
 
@@ -668,13 +711,6 @@ class BaseController:
 
             odom.pose.covariance = ODOM_POSE_COVARIANCE
             odom.twist.covariance = ODOM_TWIST_COVARIANCE
-            # todo sensor_state.distance == 0
-            #if self.v_des_left == 0 and self.v_des_right == 0:
-            #    odom.pose.covariance = ODOM_POSE_COVARIANCE2
-            #    odom.twist.covariance = ODOM_TWIST_COVARIANCE2
-            #else:
-            #    odom.pose.covariance = ODOM_POSE_COVARIANCE
-            #    odom.twist.covariance = ODOM_TWIST_COVARIANCE
 
             self.odomPub.publish(odom)
             
@@ -719,20 +755,29 @@ class BaseController:
         x = req.linear.x         # m/s
         th = req.angular.z       # rad/s
 
-
         if (self.useSonar == True) :
-            if((self.front_ranger_l<=self.safe_ranger_0)or(self.front_ranger_r<=self.safe_ranger_0)) and (x>0):
-                x=0
-            elif((self.front_ranger_l<=self.safe_ranger_1)or(self.front_ranger_r<=self.safe_ranger_1)) and (x>0.05):
-                x=0.05
-            #elif((self.front_ranger_l<=self.safe_ranger_2)or(self.front_ranger_r<=self.safe_ranger_2)) and (x>0.15):
-             #   x=0.15
+            if((self.sonar_r0<=self.safe_range_0 and self.sonar_r0>=2) and (x>0)):
+                x= 0.0
+                th=-0.2
+	    if((self.sonar_r2<=self.safe_range_0 and self.sonar_r2>=2) and (x>0)):
+	        x=0.0
+	        th=0.2
+            if((self.sonar_r1<=self.safe_range_1 and self.sonar_r1>=2) and (x>0)):
+		x=0.0  
+		th= 0.0
+            if((self.sonar_r3<=self.safe_range_1 and self.sonar_r3>=2) and (x<0)):
+                x=0.0
+		th= 0.0
 
         if not self.isPassed and x>0 :
             x = 0
 
         if x == 0:
             # Turn in place
+	    if th>0.0 and th<0.2:
+		th=0.2
+	    elif th>-0.2 and th<0.0:
+		th=-0.2
             right = th * self.wheel_track  * self.gear_reduction / 2.0
             left = -right
         elif th == 0:
@@ -740,6 +785,10 @@ class BaseController:
             left = right = x
         else:
             # Rotation about a point in space
+            if (th>0.0 and th<0.2) and (x>-0.05 and x<0.05):
+                th=0.2
+	    if (th>-0.2 and th<0.0) and (x>-0.05 and x<0.05):
+                th=-0.2
             left = x - th * self.wheel_track  * self.gear_reduction / 2.0
             right = x + th * self.wheel_track  * self.gear_reduction / 2.0
             
@@ -793,6 +842,10 @@ class ArduinoROS():
         self.controller.connect()
         
         rospy.loginfo("Connected to Arduino on port " + self.port + " at " + str(self.baud) + " baud")
+
+        #get arduino firmware version
+        self.year,self.date=self.controller.get_arduino_version()
+        rospy.loginfo("arduino firmware version is:"+str(self.year)+str(self.date))
      
         # Reserve a thread lock
         mutex = thread.allocate_lock()
