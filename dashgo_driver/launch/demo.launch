@@ -16,7 +16,7 @@
   <node pkg="nodelet" type="nodelet" name="$(arg nodelet_manager_name)" args="manager"/>
   
   <!-- velocity smoother -->
-  <include file="$(find yocs_velocity_smoother)/launch/velocity_smoother.launch">
+  <!-- <include file="$(find yocs_velocity_smoother)/launch/velocity_smoother.launch">
     <arg name="node_name"             value="$(arg node_name)"/>
     <arg name="nodelet_manager_name"  value="$(arg nodelet_manager_name)"/>
     <arg name="config_file"           value="$(arg config_file)"/>
@@ -24,7 +24,7 @@
     <arg name="smooth_cmd_vel_topic"  value="$(arg smooth_cmd_vel_topic)"/>
     <arg name="robot_cmd_vel_topic"   value="$(arg robot_cmd_vel_topic)"/>
     <arg name="odom_topic"            value="$(arg odom_topic)"/>
-  </include>
+  </include> -->
 
   <node pkg="tf" type="static_transform_publisher" name="base_link_to_sonar0"
    args="0.18 0.10 0.115 0.524 0.0  0.0 /base_footprint /sonar0 40" />
