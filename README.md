@@ -1,7 +1,9 @@
 # The dashgo_d1 package for Ubuntu 20.04 and ROS noetic
 
 ## Description
-Dashgo D1 20.04 ROS noetic
+Dashgo D1 
+
+Ubuntu 20.04 ROS noetic
 
 Version:v3.0
 
