@@ -18,7 +18,10 @@ $ cd ~/dashgo_ws
 $ catkin_make
 $ source devel/setup.bash
 ```
-
+### Dependency
+```
+$ pip install pyserial
+```
 ### Run dashgo driver
 
 First make the node executable:
