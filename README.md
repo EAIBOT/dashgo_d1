@@ -33,7 +33,7 @@ $ roslaunch dashgo_driver demo.launch
 
 In order to control the platform with keyboard teleop, install it with
 ```
-$ sudo apt install ros-melodic-teleop-twist-keyboard
+$ sudo apt install ros-noetic-teleop-twist-keyboard
 ```
 and run
 ```
