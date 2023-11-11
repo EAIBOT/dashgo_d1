@@ -57,4 +57,4 @@ $ rosrun teleop_twist_keyboard teleop_twist_keyboard.py
 
 6. Python3 print need to add parentheses.
 ___
-Please note that this fork is not officially endorsed by [original repository maintainer/organization]. While we strive to provide a robust solution for Ubuntu 20.04, we recommend users consult the official documentation and support channels for the most up-to-date information.
+Please note that this fork is not officially endorsed by [EAIBOT/dashgo_d1]. While we strive to provide a robust solution for Ubuntu 20.04, we recommend users consult the official documentation and support channels for the most up-to-date information.
