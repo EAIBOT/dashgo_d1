@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
 from geometry_msgs.msg import Twist
 import os, time
-import thread
+import _thread
 
 from math import pi as PI, degrees, radians, sin, cos
 import os
@@ -74,8 +74,8 @@ class Arduino:
         self.writeTimeout = timeout
         self.interCharTimeout = timeout / 30.
     
-        # Keep things thread safe
-        self.mutex = thread.allocate_lock()
+        # Keep things _thread safe
+        self.mutex = _thread.allocate_lock()
             
         # An array to cache analog sensor readings
         self.analog_sensor_cache = [None] * self.N_ANALOG_PORTS
@@ -85,25 +85,26 @@ class Arduino:
     
     def connect(self):
         try:
-            print "Connecting to Arduino on port", self.port, "..."
+            print ("Connecting to Arduino on port", self.port, "...")
             self.port = Serial(port=self.port, baudrate=self.baudrate, timeout=self.timeout, writeTimeout=self.writeTimeout)
             # The next line is necessary to give the firmware time to wake up.
             time.sleep(1)
-            test = self.get_baud()
-            if test != self.baudrate:
-                time.sleep(1)
-                test = self.get_baud()   
-                if test != self.baudrate:
-                    raise SerialException
-            print "Connected at", self.baudrate
-            print "Arduino is ready."
+            # test = self.get_baud()
+            # if test != self.baudrate:
+            #     time.sleep(1)
+            #     test = self.get_baud()   
+            #     if test != self.baudrate:
+            #         raise SerialException
+            if(self.port.isOpen()):
+                print ("Connected at", self.baudrate)
+                print ("Arduino is ready.")
 
         except SerialException:
-            print "Serial Exception:"
-            print sys.exc_info()
-            print "Traceback follows:"
+            print ("Serial Exception:")
+            print (sys.exc_info())
+            print ("Traceback follows:")
             traceback.print_exc(file=sys.stdout)
-            print "Cannot connect to Arduino!"
+            print ("Cannot connect to Arduino!")
             os._exit(1)
 
     def open(self): 
@@ -118,14 +119,14 @@ class Arduino:
     
     def send(self, cmd):
         ''' This command should not be used on its own: it is called by the execute commands
-            below in a thread safe manner.
+            below in a _thread safe manner.
         '''
-        self.port.write(cmd + '\r')
+        self.port.write((cmd + '\r').encode())
 
     def recv(self, timeout=0.5):
         timeout = min(timeout, self.timeout)
         ''' This command should not be used on its own: it is called by the execute commands   
-            below in a thread safe manner.  Note: we use read() instead of readline() since
+            below in a _thread safe manner.  Note: we use read() instead of readline() since
             readline() tends to return garbage characters from the Arduino
         '''
         c = ''
@@ -133,25 +134,26 @@ class Arduino:
         attempts = 0
         while c != '\r':
             c = self.port.read(1)
+            c = c.decode()
             value += c
             attempts += 1
             if attempts * self.interCharTimeout > timeout:
                 return None
 
         value = value.strip('\r')
-
+        # rospy.loginfo("value: " + str(value))
         return value
             
     def recv_ack(self):
         ''' This command should not be used on its own: it is called by the execute commands
-            below in a thread safe manner.
+            below in a _thread safe manner.
         '''
         ack = self.recv(self.timeout)
         return ack == 'OK'
 
     def recv_int(self):
         ''' This command should not be used on its own: it is called by the execute commands
-            below in a thread safe manner.
+            below in a _thread safe manner.
         '''
         value = self.recv(self.timeout)
         try:
@@ -161,7 +163,7 @@ class Arduino:
 
     def recv_array(self):
         ''' This command should not be used on its own: it is called by the execute commands
-            below in a thread safe manner.
+            below in a _thread safe manner.
         '''
         try:
             values = self.recv(self.timeout * self.N_ANALOG_PORTS).split()
@@ -183,19 +185,19 @@ class Arduino:
         attempts = 0
         
         try:
-            self.port.write(cmd + '\r')
+            self.port.write((cmd + '\r').encode())
             value = self.recv(self.timeout)
             while attempts < ntries and (value == '' or value == 'Invalid Command' or value == None):
                 try:
                     self.port.flushInput()
-                    self.port.write(cmd + '\r')
+                    self.port.write((cmd + '\r').encode())
                     value = self.recv(self.timeout)
                 except:
-                    print "Exception executing command: " + cmd
+                    print ("Exception executing command: " + cmd)
                 attempts += 1
         except:
             self.mutex.release()
-            print "Exception executing command: " + cmd
+            print ("Exception executing command: " + cmd)
             value = None
         
         self.mutex.release()
@@ -215,19 +217,19 @@ class Arduino:
         attempts = 0
         
         try:
-            self.port.write(cmd + '\r')
+            self.port.write((cmd + '\r').encode())
             values = self.recv_array()
             while attempts < ntries and (values == '' or values == 'Invalid Command' or values == [] or values == None):
                 try:
                     self.port.flushInput()
-                    self.port.write(cmd + '\r')
+                    self.port.write((cmd + '\r').encode())
                     values = self.recv_array()
                 except:
                     print("Exception executing command: " + cmd)
                 attempts += 1
         except:
             self.mutex.release()
-            print "Exception executing command: " + cmd
+            print ("Exception executing command: " + cmd)
             raise SerialException
             return []
         
@@ -237,7 +239,9 @@ class Arduino:
             values = []
 
         self.mutex.release()
-        return values
+        # rospy.loginfo("execute_array values: ")
+        # print (values)
+        return list(values)
         
     def execute_ack(self, cmd):
         ''' Thread safe execution of "cmd" on the Arduino returning True if response is ACK.
@@ -253,20 +257,20 @@ class Arduino:
         attempts = 0
         
         try:
-            self.port.write(cmd + '\r')
+            self.port.write((cmd + '\r').encode())
             ack = self.recv(self.timeout)
             while attempts < ntries and (ack == '' or ack == 'Invalid Command' or ack == None):
                 try:
                     self.port.flushInput()
-                    self.port.write(cmd + '\r')
+                    self.port.write((cmd + '\r').encode())
                     ack = self.recv(self.timeout)
                 except:
-                    print "Exception executing command: " + cmd
+                    print ("Exception executing command: " + cmd)
             attempts += 1
         except:
             self.mutex.release()
-            print "execute_ack exception when executing", cmd
-            print sys.exc_info()
+            print ("execute_ack exception when executing", cmd)
+            print (sys.exc_info())
             return 0
         
         self.mutex.release()
@@ -275,19 +279,19 @@ class Arduino:
     def update_pid(self, Kp, Kd, Ki, Ko):
         ''' Set the PID parameters on the Arduino
         '''
-        print "Updating PID parameters"
+        print ("Updating PID parameters")
         cmd = 'u ' + str(Kp) + ':' + str(Kd) + ':' + str(Ki) + ':' + str(Ko)
         self.execute_ack(cmd)                          
 
     def get_baud(self):
         ''' Get the current baud rate on the serial port.
         '''
-        return int(self.execute('b'));
+        return int(self.execute('b'))
 
     def get_encoder_counts(self):
         values = self.execute_array('e')
-        if len(values) != 2:
-            print "Encoder count was not 2"
+        if len(list(values)) != 2:
+            print ("Encoder count was not 2")
             raise SerialException
             return None
         else:
@@ -322,22 +326,22 @@ class Arduino:
     def ping(self):
         values = self.execute_array('p')
         if len(values) != 5:
-            print "ping count was not 5"
+            print ("ping count was not 5")
             raise SerialException
             return None
         else:
             return values
 
     def get_voltage(self):
-        return self.execute('v');
+        return self.execute('v')
 
     def get_emergency_button(self):
-        return self.execute('j');
+        return self.execute('j')
 
     def get_pidin(self):
         values = self.execute_array('i')
         if len(values) != 2:
-            print "get_pidin count was not 2"
+            print ("get_pidin count was not 2")
             raise SerialException
             return None
         else:
@@ -346,7 +350,7 @@ class Arduino:
     def get_pidout(self):
         values = self.execute_array('f')
         if len(values) != 2:
-            print "get_pidout count was not 2"
+            print ("get_pidout count was not 2")
             raise SerialException
             return None
         else:
@@ -415,7 +419,7 @@ class BaseController:
 
         # Subscriptions
         #rospy.Subscriber("cmd_vel", Twist, self.cmdVelCallback)
-        rospy.Subscriber("smoother_cmd_vel", Twist, self.cmdVelCallback)
+        rospy.Subscriber("cmd_vel", Twist, self.cmdVelCallback)
         
         # Clear any old odometry info
         self.arduino.reset_encoders()
@@ -448,7 +452,7 @@ class BaseController:
         self.voltage_bool = False
         self.voltage_val = 0
         self.voltage_status_service = rospy.Service('voltage_status', Trigger, self.handle_voltage_status) 
-	self.voltage_pub = rospy.Publisher('voltage_value', Int16, queue_size=30)
+        self.voltage_pub = rospy.Publisher('voltage_value', Int16, queue_size=30)
    
         self.emergencybt_bool = False
         self.emergencybt_val = 0
@@ -564,149 +568,148 @@ class BaseController:
                     self.bad_encoder_count += 1
                     rospy.logerr("ping exception count: " + str(self.bad_encoder_count))
                     return
-
-	    try:
-	        self.voltage_val  = self.arduino.get_voltage()*10
+        try:
+            self.voltage_val  = self.arduino.get_voltage()*10
 		#print "voltage_val=",self.voltage_val
-		self.voltage_pub.publish(self.voltage_val)
+            self.voltage_pub.publish(self.voltage_val)
 		#print "publish voltage_val is",self.voltage_val
-	    except:
-		self.voltage_pub.publish(-1)
+        except:
+            self.voltage_pub.publish(-1)
 		#rospy.logerr("get voltage value error")
 		#return
 
-	    try:
-	        self.emergencybt_val  = self.arduino.get_emergency_button()
+        try:
+            self.emergencybt_val  = self.arduino.get_emergency_button()
 	        #print "emergencybt_val=",self.emergencybt_val
-	        self.emergencybt_pub.publish(self.emergencybt_val)
+            self.emergencybt_pub.publish(self.emergencybt_val)
 	        #print "publish emergencybt_val is",self.emergencybt_val
-	    except:
-		self.emergencybt_pub.publish(-1)
+        except:
+            self.emergencybt_pub.publish(-1)
 	        #rospy.logerr("get emergencybt status error")
 	        #return
  
-            try:
-                left_enc, right_enc = self.arduino.get_encoder_counts()
-                #rospy.loginfo("left_enc: " + str(left_enc)+"right_enc: " + str(right_enc))
-                self.lEncoderPub.publish(left_enc)
-                self.rEncoderPub.publish(right_enc)
-            except:
-                self.bad_encoder_count += 1
-                rospy.logerr("Encoder exception count: " + str(self.bad_encoder_count))
-                return
-                            
-            dt = now - self.then
-            self.then = now
-            dt = dt.to_sec()
-            
-            # Calculate odometry
-            if self.enc_left == None:
-                dright = 0
-                dleft = 0
+        try:
+            left_enc, right_enc = self.arduino.get_encoder_counts()
+            #rospy.loginfo("left_enc: " + str(left_enc)+"right_enc: " + str(right_enc))
+            self.lEncoderPub.publish(left_enc)
+            self.rEncoderPub.publish(right_enc)
+        except:
+            self.bad_encoder_count += 1
+            rospy.logerr("Encoder exception count: " + str(self.bad_encoder_count))
+            return
+        # left_enc, right_enc = self.arduino.get_encoder_counts()                    
+        dt = now - self.then
+        self.then = now
+        dt = dt.to_sec()
+        
+        # Calculate odometry
+        if self.enc_left == None:
+            dright = 0
+            dleft = 0
+        else:
+            if (left_enc < self.encoder_low_wrap and self.enc_left > self.encoder_high_wrap) :
+                self.l_wheel_mult = self.l_wheel_mult + 1     
+            elif (left_enc > self.encoder_high_wrap and self.enc_left < self.encoder_low_wrap) :
+                self.l_wheel_mult = self.l_wheel_mult - 1
             else:
-                if (left_enc < self.encoder_low_wrap and self.enc_left > self.encoder_high_wrap) :
-                    self.l_wheel_mult = self.l_wheel_mult + 1     
-                elif (left_enc > self.encoder_high_wrap and self.enc_left < self.encoder_low_wrap) :
-                    self.l_wheel_mult = self.l_wheel_mult - 1
-                else:
-                     self.l_wheel_mult = 0
-                if (right_enc < self.encoder_low_wrap and self.enc_right > self.encoder_high_wrap) :
-                    self.r_wheel_mult = self.r_wheel_mult + 1     
-                elif (right_enc > self.encoder_high_wrap and self.enc_right < self.encoder_low_wrap) :
-                    self.r_wheel_mult = self.r_wheel_mult - 1
-                else:
-                     self.r_wheel_mult = 0
-                #dright = (right_enc - self.enc_right) / self.ticks_per_meter
-                #dleft = (left_enc - self.enc_left) / self.ticks_per_meter
-                dleft = 1.0 * (left_enc + self.l_wheel_mult * (self.encoder_max - self.encoder_min)-self.enc_left) / self.ticks_per_meter 
-                dright = 1.0 * (right_enc + self.r_wheel_mult * (self.encoder_max - self.encoder_min)-self.enc_right) / self.ticks_per_meter 
+                    self.l_wheel_mult = 0
+            if (right_enc < self.encoder_low_wrap and self.enc_right > self.encoder_high_wrap) :
+                self.r_wheel_mult = self.r_wheel_mult + 1     
+            elif (right_enc > self.encoder_high_wrap and self.enc_right < self.encoder_low_wrap) :
+                self.r_wheel_mult = self.r_wheel_mult - 1
+            else:
+                    self.r_wheel_mult = 0
+            #dright = (right_enc - self.enc_right) / self.ticks_per_meter
+            #dleft = (left_enc - self.enc_left) / self.ticks_per_meter
+            dleft = 1.0 * (left_enc + self.l_wheel_mult * (self.encoder_max - self.encoder_min)-self.enc_left) / self.ticks_per_meter 
+            dright = 1.0 * (right_enc + self.r_wheel_mult * (self.encoder_max - self.encoder_min)-self.enc_right) / self.ticks_per_meter 
 
-            self.enc_right = right_enc
-            self.enc_left = left_enc
+        self.enc_right = right_enc
+        self.enc_left = left_enc
+        
+        dxy_ave = (dright + dleft) / 2.0
+        dth = (dright - dleft) / self.wheel_track
+        vxy = dxy_ave / dt
+        vth = dth / dt
             
-            dxy_ave = (dright + dleft) / 2.0
-            dth = (dright - dleft) / self.wheel_track
-            vxy = dxy_ave / dt
-            vth = dth / dt
-                
-            if (dxy_ave != 0):
-                dx = cos(dth) * dxy_ave
-                dy = -sin(dth) * dxy_ave
-                self.x += (cos(self.th) * dx - sin(self.th) * dy)
-                self.y += (sin(self.th) * dx + cos(self.th) * dy)
-    
-            if (dth != 0):
-                self.th += dth 
-    
-            quaternion = Quaternion()
-            quaternion.x = 0.0 
-            quaternion.y = 0.0
-            quaternion.z = sin(self.th / 2.0)
-            quaternion.w = cos(self.th / 2.0)
-    
-            # Create the odometry transform frame broadcaster.
-            if (self.useImu == False) :
-                self.odomBroadcaster.sendTransform(
-                  (self.x, self.y, 0), 
-                  (quaternion.x, quaternion.y, quaternion.z, quaternion.w),
-                  rospy.Time.now(),
-                  self.base_frame,
-                  "odom"
-                )
-    
-            odom = Odometry()
-            odom.header.frame_id = "odom"
-            odom.child_frame_id = self.base_frame
-            odom.header.stamp = now
-            odom.pose.pose.position.x = self.x
-            odom.pose.pose.position.y = self.y
-            odom.pose.pose.position.z = 0
-            odom.pose.pose.orientation = quaternion
-            odom.twist.twist.linear.x = vxy
-            odom.twist.twist.linear.y = 0
-            odom.twist.twist.angular.z = vth
+        if (dxy_ave != 0):
+            dx = cos(dth) * dxy_ave
+            dy = -sin(dth) * dxy_ave
+            self.x += (cos(self.th) * dx - sin(self.th) * dy)
+            self.y += (sin(self.th) * dx + cos(self.th) * dy)
 
-            odom.pose.covariance = ODOM_POSE_COVARIANCE
-            odom.twist.covariance = ODOM_TWIST_COVARIANCE
-            # todo sensor_state.distance == 0
-            #if self.v_des_left == 0 and self.v_des_right == 0:
-            #    odom.pose.covariance = ODOM_POSE_COVARIANCE2
-            #    odom.twist.covariance = ODOM_TWIST_COVARIANCE2
-            #else:
-            #    odom.pose.covariance = ODOM_POSE_COVARIANCE
-            #    odom.twist.covariance = ODOM_TWIST_COVARIANCE
+        if (dth != 0):
+            self.th += dth 
 
-            self.odomPub.publish(odom)
+        quaternion = Quaternion()
+        quaternion.x = 0.0 
+        quaternion.y = 0.0
+        quaternion.z = sin(self.th / 2.0)
+        quaternion.w = cos(self.th / 2.0)
+
+        # Create the odometry transform frame broadcaster.
+        if (self.useImu == False) :
+            self.odomBroadcaster.sendTransform(
+                (self.x, self.y, 0), 
+                (quaternion.x, quaternion.y, quaternion.z, quaternion.w),
+                rospy.Time.now(),
+                self.base_frame,
+                "odom"
+            )
+
+        odom = Odometry()
+        odom.header.frame_id = "odom"
+        odom.child_frame_id = self.base_frame
+        odom.header.stamp = now
+        odom.pose.pose.position.x = self.x
+        odom.pose.pose.position.y = self.y
+        odom.pose.pose.position.z = 0
+        odom.pose.pose.orientation = quaternion
+        odom.twist.twist.linear.x = vxy
+        odom.twist.twist.linear.y = 0
+        odom.twist.twist.angular.z = vth
+
+        odom.pose.covariance = ODOM_POSE_COVARIANCE
+        odom.twist.covariance = ODOM_TWIST_COVARIANCE
+        # todo sensor_state.distance == 0
+        #if self.v_des_left == 0 and self.v_des_right == 0:
+        #    odom.pose.covariance = ODOM_POSE_COVARIANCE2
+        #    odom.twist.covariance = ODOM_TWIST_COVARIANCE2
+        #else:
+        #    odom.pose.covariance = ODOM_POSE_COVARIANCE
+        #    odom.twist.covariance = ODOM_TWIST_COVARIANCE
+
+        self.odomPub.publish(odom)
+        
+        if now > (self.last_cmd_vel + rospy.Duration(self.timeout)):
+            self.v_des_left = 0
+            self.v_des_right = 0
             
-            if now > (self.last_cmd_vel + rospy.Duration(self.timeout)):
-                self.v_des_left = 0
-                self.v_des_right = 0
-                
+        if self.v_left < self.v_des_left:
+            self.v_left += self.max_accel
+            if self.v_left > self.v_des_left:
+                self.v_left = self.v_des_left
+        else:
+            self.v_left -= self.max_accel
             if self.v_left < self.v_des_left:
-                self.v_left += self.max_accel
-                if self.v_left > self.v_des_left:
-                    self.v_left = self.v_des_left
-            else:
-                self.v_left -= self.max_accel
-                if self.v_left < self.v_des_left:
-                    self.v_left = self.v_des_left
-            
+                self.v_left = self.v_des_left
+        
+        if self.v_right < self.v_des_right:
+            self.v_right += self.max_accel
+            if self.v_right > self.v_des_right:
+                self.v_right = self.v_des_right
+        else:
+            self.v_right -= self.max_accel
             if self.v_right < self.v_des_right:
-                self.v_right += self.max_accel
-                if self.v_right > self.v_des_right:
-                    self.v_right = self.v_des_right
-            else:
-                self.v_right -= self.max_accel
-                if self.v_right < self.v_des_right:
-                    self.v_right = self.v_des_right
-            self.lVelPub.publish(self.v_left)
-            self.rVelPub.publish(self.v_right)            
+                self.v_right = self.v_des_right
+        self.lVelPub.publish(self.v_left)
+        self.rVelPub.publish(self.v_right)            
 
-            # Set motor speeds in encoder ticks per PID loop
-            if not self.stopped:
-                self.arduino.drive(self.v_left, self.v_right)
-                
-            self.t_next = now + self.t_delta
+        # Set motor speeds in encoder ticks per PID loop
+        if not self.stopped:
+            self.arduino.drive(self.v_left, self.v_right)
+            
+        self.t_next = now + self.t_delta
             
     def stop(self):
         self.stopped = True
@@ -718,7 +721,7 @@ class BaseController:
         
         x = req.linear.x         # m/s
         th = req.angular.z       # rad/s
-
+        # print("cmdVelCallback x: ", x, th)
 
         if (self.useSonar == True) :
             if((self.front_ranger_l<=self.safe_ranger_0)or(self.front_ranger_r<=self.safe_ranger_0)) and (x>0):
@@ -794,8 +797,8 @@ class ArduinoROS():
         
         rospy.loginfo("Connected to Arduino on port " + self.port + " at " + str(self.baud) + " baud")
      
-        # Reserve a thread lock
-        mutex = thread.allocate_lock()
+        # Reserve a _thread lock
+        mutex = _thread.allocate_lock()
               
         # Initialize the base controller if used
         if self.use_base_controller:
@@ -822,4 +825,4 @@ class ArduinoROS():
         
 if __name__ == '__main__':
     myArduino = ArduinoROS()
-
+    rospy.spin()
